@@ -10,11 +10,16 @@ const SECAddress = "0xcb632cC0F166712f09107a7587485f980e524fF6";
 const App = () => {
   const [mode, setMode] = useState("employer");
   const [wallet, setWallet] = useState<ReturnType<typeof getSuaveWallet>>();
-  const [userInput, setUserInput] = useState<string>();
-  //   const [message, setMessage] = useState("");
+  const [maxSalary, setMaxSalary] = useState<string>();
+  const [employerJobID, employerSetJobID] = useState<string>();
+  const [employerCandidateID, employerSetCandidateID] = useState<string>();
+  const [candidateJobID, candidateSetJobID] = useState<string>();
+  const [candidateCandidateID, candidateSetCandidateID] = useState<string>();
+  const [minSalary, setMinSalary] = useState<string>();
+  const [checkJobID, checkSetJobID] = useState<string>();
+  const [checkCandidateID, checkSetCandidateID] = useState<string>();
 
   const createJob = async () => {
-    // console.log('yeah');
     //suave-geth spell conf-request 0xd594760B2A36467ec7F0267382564772D7b0b73c 'createJob(uint)' '(1000)'
     const suaveTx: TransactionRequestSuave = {
         to: SECAddress,
@@ -25,8 +30,8 @@ const App = () => {
         data: encodeFunctionData({
             abi: SEC.abi,
             functionName: 'createJob',
-            args: [userInput],
-        }),//stringToHex(userInput || "0x"),
+            args: [maxSalary],
+        }),
         confidentialInputs: "0x",
         kettleAddress: "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f",
       }
@@ -36,8 +41,23 @@ const App = () => {
   };
 
   const registerCandidate = () => {
-    console.log('yoah');
-    // setMessage("Button was clicked!");
+    const suaveTx: TransactionRequestSuave = {
+        to: SECAddress,
+        value: 0n,
+        gasPrice: 10000000000n,
+        gas: 100000n,
+        type: "0x43",
+        data: encodeFunctionData({
+            abi: SEC.abi,
+            functionName: 'newCandidate',
+            args: [employerJobID, employerCandidateID],
+        }),//stringToHex(userInput || "0x"),
+        confidentialInputs: "0x",
+        kettleAddress: "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f",
+      }
+      wallet?.sendTransaction(suaveTx).then((tx: Hex) => {
+        console.log(tx)
+      })
   };
 
   const submitExpectation = () => {
@@ -72,14 +92,14 @@ const App = () => {
 
   return (
     <Layout>
-    <div className="flex flex-col min-h-screen">
+    <div className="flex min-h-screen">
       <main className="flex-1 flex items-center justify-center">
-        <section className="max-w-4xl mx-auto grid grid-cols-1 gap-8 py-12 px-6">
+        <section className="max-w-4xl mx-auto gap-8 py-12 px-6">
           <div className="flex flex-col items-center justify-center">
             <h1 className="text-3xl font-bold text-black mb-2">Welcome to the S.E.C.</h1>
             <p className="text-2xl font-normal italic text-black mb-4">Salary Expectations Checker</p>
             <div className="mt-4 mb-4" />
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-20">
               <button
                 onClick={() => setMode("employer")}
                 className={`px-6 py-3 rounded-full transition-colors ${
@@ -101,8 +121,9 @@ const App = () => {
                 Candidate
               </button>
             </div>
-            <div className="flex items-center justify-between gap-4 mt-8 w-full">
-              <div className="flex gap-4">
+            <div className="flex justify-between gap-10 mt-8 w-full">
+              <div className="flex flex-col gap-4">
+                
                 <button
                   className={`bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors ${
                     mode === "employer" ? "opacity-100" : "opacity-50 cursor-not-allowed"
@@ -112,9 +133,16 @@ const App = () => {
                 >
                   Create Job
                 </button>
-                {/*<input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder='Enter Max Salary'/>*/}
+
+                <p></p>
+                <div> Enter max salary: </div>
+                <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={maxSalary} onChange={(e) => setMaxSalary(e.target.value)} placeholder='100000' disabled={mode !== "employer"}/>
+                
               </div>
-              <div className="flex gap-4">
+
+
+              <div className="flex flex-col gap-4">
+                
                 <button
                   className={`bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors ${
                     mode === "employer" ? "opacity-100" : "opacity-50 cursor-not-allowed"
@@ -124,8 +152,19 @@ const App = () => {
                 >
                   Register Candidate
                 </button>
+
+                <p></p>
+                Enter job ID:
+                <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={employerJobID} onChange={(e) => employerSetJobID(e.target.value)} placeholder='2'/>
+                
+                <p></p>
+                Enter candidate ID:
+                <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={employerCandidateID} onChange={(e) => employerSetCandidateID(e.target.value)} placeholder='0xbaba'/>
+
+                
               </div>
-              <div className="flex gap-4">
+              <div className="flex flex-col gap-4">
+
                 <button
                   className={`bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded transition-colors ${
                     mode === "candidate" ? "opacity-100" : "opacity-50 cursor-not-allowed"
@@ -135,9 +174,44 @@ const App = () => {
                 >
                   Submit Expectation
                 </button>
+
+                <p></p>
+                Enter job ID:
+                <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={candidateJobID} onChange={(e) => candidateSetJobID(e.target.value)} placeholder='2'/>
+                
+                <p></p>
+                Enter candidate ID:
+                <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={candidateCandidateID} onChange={(e) => candidateSetCandidateID(e.target.value)} placeholder='0xbaba'/>
+
+                
+                <p></p>
+                Enter min salary:
+                <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={minSalary} onChange={(e) => setMinSalary(e.target.value)} placeholder='120000'/>
+
+
               </div>
             </div>
-          </div>
+            <div>
+                <div className="flex flex-row gap-4 py-20">
+                <button
+                className={"bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"}
+                onClick={submitExpectation}
+                >
+                Check Match!
+                </button>
+
+                <p></p>
+                <div className="self-center">Enter job ID:</div>
+                <input className={"border border-gray-300 rounded w-24 text-right"} type="text" value={checkJobID} onChange={(e) => checkSetJobID(e.target.value)} placeholder='2'/>
+                
+                <div className="self-center">Enter candidate ID:</div>
+                <input className={"border border-gray-300 rounded w-24 text-right"} type="text" value={checkCandidateID} onChange={(e) => checkSetCandidateID(e.target.value)} placeholder='0xbaba'/>
+
+
+                </div>
+                </div>
+            </div>
+
         </section>
       </main>
     </div>
