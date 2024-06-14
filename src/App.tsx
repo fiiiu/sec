@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react'
 import Layout from './layout.tsx';
 import './styles.css';
 import { TransactionRequestSuave, getSuaveWallet, getSuaveProvider } from "@flashbots/suave-viem/chains/utils";
-import { custom, http, Hex, stringToHex, encodeFunctionData } from '@flashbots/suave-viem';
+import { custom, http, Hex, createPublicClient, encodeFunctionData, hexToSignature, setSuaveTxHash, stringToHex } from '@flashbots/suave-viem';
+import { localhost } from '@flashbots/suave-viem/chains'
 import SEC from './contracts/out/SEC.sol/SEC.json';
+import { parseEventLogs } from 'viem';
+import { SuaveProvider, SuaveContract, SuaveWallet, BrowserProvider, ConfidentialComputeRecord, ConfidentialComputeRequest } from 'ethers-suave';
+import { sendRawTransaction } from '@flashbots/suave-viem/actions';
 
-const SECAddress = "0xcb632cC0F166712f09107a7587485f980e524fF6";
+const SEC_ADDRESS = "0xcb632cC0F166712f09107a7587485f980e524fF6";
 
 const App = () => {
   const [mode, setMode] = useState("employer");
@@ -17,77 +21,190 @@ const App = () => {
   const [candidateCandidateID, candidateSetCandidateID] = useState<string>();
   const [minSalary, setMinSalary] = useState<string>();
   const [checkJobID, checkSetJobID] = useState<string>();
-  const [checkCandidateID, checkSetCandidateID] = useState<string>();
+  const [checkCandidateID, checkSetCandidateID] = useState<string>();  
+  const [createdJobID, setCreatedJobID] = useState<string>();
+  const [candidateRegistered, setCandidateRegistered] = useState<string>();
+  const [matchResult, setMatchResult] = useState<string>();
+  const [expectationsSubmitted, setExpectationsSubmitted] = useState<string>();
 
-  const createJob = async () => {
-    //suave-geth spell conf-request 0xd594760B2A36467ec7F0267382564772D7b0b73c 'createJob(uint)' '(1000)'
-    const suaveTx: TransactionRequestSuave = {
-        to: SECAddress,
-        value: 0n,
-        gasPrice: 10000000000n,
-        gas: 100000n,
-        type: "0x43",
-        data: encodeFunctionData({
-            abi: SEC.abi,
-            functionName: 'createJob',
-            args: [maxSalary],
-        }),
-        confidentialInputs: "0x",
-        kettleAddress: "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f",
-      }
-      wallet?.sendTransaction(suaveTx).then((tx: Hex) => {
-        console.log(tx)
-      })
-  };
-
-  const registerCandidate = () => {
-    const suaveTx: TransactionRequestSuave = {
-        to: SECAddress,
-        value: 0n,
-        gasPrice: 10000000000n,
-        gas: 100000n,
-        type: "0x43",
-        data: encodeFunctionData({
-            abi: SEC.abi,
-            functionName: 'newCandidate',
-            args: [employerJobID, employerCandidateID],
-        }),//stringToHex(userInput || "0x"),
-        confidentialInputs: "0x",
-        kettleAddress: "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f",
-      }
-      wallet?.sendTransaction(suaveTx).then((tx: Hex) => {
-        console.log(tx)
-      })
-  };
-
-  const submitExpectation = () => {
-    console.log('yuah');
-    // setMessage("Button was clicked!");
-  };
+  const suaveProvider = new SuaveProvider("http://localhost:8545");
 
   useEffect(() => {
-    const suaveProvider = getSuaveProvider(http("https://localhost:8545"))
-    console.log(suaveProvider.chain)
-    const load = async () => {
+      // console.log(suaveProvider.chain)
+      const load = async () => {
       if ('ethereum' in window && !wallet) {
-        console.log('ethereum is available')
-        // request accounts from window.ethereum
-        const eth = window.ethereum as any
-        const accounts = await eth.request({ method: 'eth_requestAccounts' });
-        console.log(accounts)
-        const wallet = getSuaveWallet({
-          transport: custom(eth),
-          jsonRpcAccount: accounts[0],
-        });
-        console.log(wallet)
-        setWallet(wallet)
+          console.log('ethereum is available')
+          // request accounts from window.ethereum
+          const eth = window.ethereum as any
+          const accounts = await eth.request({ method: 'eth_requestAccounts' });
+          console.log(accounts)
+          const wallet = getSuaveWallet({
+            transport: custom(eth),
+            jsonRpcAccount: accounts[0],
+          });
+          console.log(wallet)
+          setWallet(wallet)
+          eth.on('accountsChanged', refreshWallet);
       } else {
-        console.log('ethereum is not available')
+          console.log('ethereum is not available')
       }
-    }
-    load()
+      }
+      load()
   }, [wallet])
 
+  const refreshWallet = async () => {
+    const eth = window.ethereum as any
+    const accounts = await eth.request({ method: 'eth_requestAccounts' })
+    const wallet_ = getSuaveWallet({
+      transport: custom(eth),
+      jsonRpcAccount: accounts[0],
+    });
+    console.log('setting wallet');
+    console.log(wallet_.account.address);
+    setWallet(wallet_);
+  }
+  
+  const signingCallback = async (_hash: string) => {
+    const hexSig = await (window as any).ethereum.request({ method: 'eth_sign', params: [wallet?.account.address, _hash] })
+    const sig = hexToSignature(hexSig)
+    return { r: sig.r, s: sig.s, v: Number(sig.v) } as SigSplit
+  }
+
+  type SigSplit = {
+    r: string;
+    s: string;
+    v: number;
+  };
+
+  const createJob = async () => {
+    //suave-geth spell conf-request 0xd594760B2A36467ec7F0267382564772D7b0b73c 'createJob(uint)' '(1000)' 
+    const nonce = await suaveProvider.getTransactionCount(wallet?.account.address);
+    // console.log(nonce);
+    const confidentialRecord = new ConfidentialComputeRecord({
+        'nonce': nonce,
+        'to': SEC_ADDRESS,
+        'gas': '0x0f4240',
+        'gasPrice': '0x9c9aca10',
+        'value': '0x',
+        'data':  encodeFunctionData({
+            abi: SEC.abi,
+            functionName: 'createJob',
+            args: [10000n],
+        }),
+        'chainId': '0x1008C45',
+    }, "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f")
+    
+    const confidentialRequest = (await new ConfidentialComputeRequest(confidentialRecord, "0x").signWithAsyncCallback(signingCallback)).rlpEncode();
+    // console.log(confidentialRequest);
+    // return
+    const res = await suaveProvider.send('eth_sendRawTransaction', [confidentialRequest]);
+    console.log(res);
+    const txReceipt = await suaveProvider.getTransactionReceipt(res);
+    //console.log(txReceipt);
+    //Fetch and decode the logs from the transaction receipt
+    const logs = await parseEventLogs({ 
+        abi: SEC.abi, 
+        eventName: 'onchainJobCreated', 
+        logs: txReceipt.logs,
+    })
+    //console.log('Decoded logs:', logs);
+    const createdJobID = logs[0].args.createdJobID;
+    console.log(createdJobID);
+    setCreatedJobID(createdJobID.toString());       
+  };
+
+
+  const registerCandidate = async () => { 
+    const nonce = await suaveProvider.getTransactionCount(wallet?.account.address);
+    // console.log(nonce);
+    const confidentialRecord = new ConfidentialComputeRecord({
+        'nonce': nonce,
+        'to': SEC_ADDRESS,
+        'gas': '0x0f4240',
+        'gasPrice': '0x9c9aca10',
+        'value': '0x',
+        'data': encodeFunctionData({
+          abi: SEC.abi,
+          functionName: 'newCandidate',
+          args: [employerJobID, employerCandidateID],
+        }),
+        'chainId': '0x1008C45',
+    }, "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f")
+    
+    const confidentialRequest = (await new ConfidentialComputeRequest(confidentialRecord, "0x").signWithAsyncCallback(signingCallback)).rlpEncode();
+    // console.log(confidentialRequest);
+    // return
+    const res = await suaveProvider.send('eth_sendRawTransaction', [confidentialRequest]);
+    console.log(res);
+    const txReceipt = await suaveProvider.getTransactionReceipt(res);
+    //console.log(txReceipt);
+    setCandidateRegistered(employerCandidateID);  
+  };
+
+
+  const submitExpectation = async () => {
+    const nonce = await suaveProvider.getTransactionCount(wallet?.account.address);
+    // console.log(nonce);
+    const confidentialRecord = new ConfidentialComputeRecord({
+        'nonce': nonce,
+        'to': SEC_ADDRESS,
+        'gas': '0x0f4240',
+        'gasPrice': '0x9c9aca10',
+        'value': '0x',
+        'data': encodeFunctionData({
+          abi: SEC.abi,
+          functionName: 'setMinPay',
+          args: [candidateJobID, candidateCandidateID, minSalary],
+        }),
+        'chainId': '0x1008C45',
+    }, "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f")
+    
+    const confidentialRequest = (await new ConfidentialComputeRequest(confidentialRecord, "0x").signWithAsyncCallback(signingCallback)).rlpEncode();
+    // console.log(confidentialRequest);
+    // return
+    const res = await suaveProvider.send('eth_sendRawTransaction', [confidentialRequest]);
+    console.log(res);
+    const txReceipt = await suaveProvider.getTransactionReceipt(res);
+    //console.log(txReceipt);
+    setExpectationsSubmitted("Expectations submitted");
+  };
+
+  const checkMatch = async () => {    
+    const nonce = await suaveProvider.getTransactionCount(wallet?.account.address);
+    // console.log(nonce);
+    const confidentialRecord = new ConfidentialComputeRecord({
+        'nonce': nonce,
+        'to': SEC_ADDRESS,
+        'gas': '0x0f4240',
+        'gasPrice': '0x9c9aca10',
+        'value': '0x',
+        data: encodeFunctionData({
+            abi: SEC.abi,
+            functionName: 'isMatch',
+            args: [checkJobID, checkCandidateID],
+        }),
+        'chainId': '0x1008C45',
+    }, "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f")
+    
+    const confidentialRequest = (await new ConfidentialComputeRequest(confidentialRecord, "0x").signWithAsyncCallback(signingCallback)).rlpEncode();
+    // console.log(confidentialRequest);
+    // return
+    const res = await suaveProvider.send('eth_sendRawTransaction', [confidentialRequest]);
+    console.log(res);
+    const txReceipt = await suaveProvider.getTransactionReceipt(res);
+    //console.log(txReceipt);
+    // Fetch and decode the logs from the transaction receipt
+    const logs = await parseEventLogs({ 
+        abi: SEC.abi, 
+        eventName: 'onchainMatched', 
+        logs: txReceipt.logs,
+    })
+    console.log('Decoded logs:', logs);
+    const matchResult = logs[0].args.matched;
+    console.log(matchResult);
+    // setMatchResult(matchResult.toString());
+    setMatchResult(matchResult?"Matched! :)":"Not matched :(");
+  };
 
 
   return (
@@ -99,7 +216,7 @@ const App = () => {
             <h1 className="text-3xl font-bold text-black mb-2">Welcome to the S.E.C.</h1>
             <p className="text-2xl font-normal italic text-black mb-4">Salary Expectations Checker</p>
             <div className="mt-4 mb-4" />
-            <div className="flex items-center justify-center gap-20">
+            <div className="flex items-center justify-center gap-28">
               <button
                 onClick={() => setMode("employer")}
                 className={`px-6 py-3 rounded-full transition-colors ${
@@ -125,7 +242,7 @@ const App = () => {
               <div className="flex flex-col gap-4">
                 
                 <button
-                  className={`bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors ${
+                  className={`bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition-colors min-w-48 ${
                     mode === "employer" ? "opacity-100" : "opacity-50 cursor-not-allowed"
                   }`}
                   disabled={mode !== "employer"}
@@ -137,7 +254,8 @@ const App = () => {
                 <p></p>
                 <div> Enter max salary: </div>
                 <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={maxSalary} onChange={(e) => setMaxSalary(e.target.value)} placeholder='100000' disabled={mode !== "employer"}/>
-                
+                <p className="w-36 truncate">Created Job ID: <span className="font-bold">{createdJobID}</span></p>
+
               </div>
 
 
@@ -161,6 +279,7 @@ const App = () => {
                 Enter candidate ID:
                 <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={employerCandidateID} onChange={(e) => employerSetCandidateID(e.target.value)} placeholder='0xbaba'/>
 
+                <div className="w-48">Registered candidate: <p className="font-bold text-right">{candidateRegistered}</p></div>
                 
               </div>
               <div className="flex flex-col gap-4">
@@ -189,13 +308,15 @@ const App = () => {
                 <input className={"border border-gray-300 rounded w-24 place-self-end text-right"} type="text" value={minSalary} onChange={(e) => setMinSalary(e.target.value)} placeholder='120000'/>
 
 
+                <div className="min-w-48 min-h-8 font-bold">{expectationsSubmitted}</div>
+
               </div>
             </div>
             <div>
                 <div className="flex flex-row gap-4 py-20">
                 <button
                 className={"bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"}
-                onClick={submitExpectation}
+                onClick={checkMatch}
                 >
                 Check Match!
                 </button>
@@ -206,10 +327,10 @@ const App = () => {
                 
                 <div className="self-center">Enter candidate ID:</div>
                 <input className={"border border-gray-300 rounded w-24 text-right"} type="text" value={checkCandidateID} onChange={(e) => checkSetCandidateID(e.target.value)} placeholder='0xbaba'/>
-
+                </div>
 
                 </div>
-                </div>
+                <div className="text-xl min-h-8 font-bold">{matchResult}</div>
             </div>
 
         </section>
