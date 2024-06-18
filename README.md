@@ -1,30 +1,61 @@
-# React + TypeScript + Vite
+# <h1 align="center"> S.E.C. </h1>
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+*Salary Expectations Checker*
 
-Currently, two official plugins are available:
+## Set Up
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+build the `mossify-prod` branch of suave-geth and run a dev node
+```
+suave-geth --suave-dev
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+build contracts
+```
+forge build
+```
+
+fund second account
+```
+forge script scripts/FundAccount.s.sol:FundAccount --broadcast --rpc-url "http://localhost:8545" --private-key <prefunded_private_key>
+```
+
+deploy contract from default account
+```
+<path/to/suave/>suave-geth spell deploy SEC.sol:SEC
+```
+
+## Running from Console
+
+create job from default account
+```
+<path/to/suave/>suave-geth spell conf-request <contract_address> 'createJob(uint)' '(1000)'
+```
+
+add candidate from default account--this works! (passing the --private-key param is optional)
+```
+<path/to/suave/>suave-geth spell conf-request --private-key <prefunded_private_key> 'newCandidate(uint, bytes memory)' '(0, 0xbaba)'
+```
+
+add candidate from second account--this fails!
+```
+<path/to/suave/>suave-geth spell conf-request --private-key <second_private_key> <contract_address> 'newCandidate(uint, bytes memory)' '(0, 0xdada)'
+```
+
+set min pay from second account--ok
+```
+<path/to/suave/>suave-geth spell conf-request --private-key <second_private_key> <contract_address> 'function setMinPay(uint, bytes memory, uint)' '(0,0xdada,2000)'
+```
+
+check match from second account--ok (no match in this example as 2000>1000)
+```
+<path/to/suave/>suave-geth spell conf-request --private-key <second_private_key> <contract_address> 'function isMatch(uint, bytes memory)' '(0,0xdada)'
+```
+
+## Running the Frontend
+
+alternatively, you can run the frontend by seting up the webserver
+```
+bun dev
+```
+
+and visiting `localhost:5173` to interact with the app!
