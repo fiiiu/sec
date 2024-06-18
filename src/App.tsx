@@ -89,7 +89,7 @@ const App = () => {
         'data':  encodeFunctionData({
             abi: SEC.abi,
             functionName: 'createJob',
-            args: [10000n],
+            args: [maxSalary],
         }),
         'chainId': '0x1008C45',
     }, "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f")
